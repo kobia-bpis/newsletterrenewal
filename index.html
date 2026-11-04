@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Serverless Image CDN Console</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style>
+        :root { --bg-main: #ffffff; --bg-card: #f6f8fa; --border: #d0d7de; --text-main: #24292f; --text-sub: #57606a; }
+        .dark { --bg-main: #0d1117; --bg-card: #161b22; --border: #30363d; --text-main: #c9d1d9; --text-sub: #8b949e; }
+        body { background-color: var(--bg-main); color: var(--text-main); transition: all 0.25s; }
+        .gh-card { background-color: var(--bg-card); border-color: var(--border); }
+        .gh-border { border-color: var(--border); }
+        .gh-text-sub { color: var(--text-sub); }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col font-sans antialiased">
+
+    <header class="gh-card border-b px-6 py-3 flex justify-between items-center shrink-0 shadow-sm">
+        <h1 class="font-bold text-sm tracking-wide flex items-center gap-2">📦 Serverless Image CDN Console</h1>
+        <button onclick="document.documentElement.classList.toggle('dark')" class="px-3 py-1.5 rounded-md border gh-border text-xs font-semibold cursor-pointer hover:bg-gray-500/10">🌓 Theme</button>
+    </header>
+
+    <main class="flex-1 p-6 max-w-[900px] w-full mx-auto">
+        <div class="mb-6 pb-4 border-b gh-border">
+            <h2 class="text-lg font-bold mb-1">🖼️ Active CDN Assets</h2>
+            <p class="text-xs gh-text-sub">현재 GitHub 저장소 <code class="bg-gray-500/10 px-1 py-0.5 rounded font-mono">images/</code> 폴더를 실시간 스캔하여 다운로드 가능한 고정 링크를 추출합니다.</p>
+        </div>
+
+        <div id="asset-container" class="space-y-4">
+            <p class="text-center gh-text-sub py-12 font-mono text-xs animate-pulse">Scanning GitHub Repository API...</p>
+        </div>
+    </main>
+
+    <div id="preview-modal" class="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 hidden items-center justify-center p-4">
+        <div class="gh-card border rounded-xl max-w-[600px] w-full overflow-hidden shadow-2xl flex flex-col">
+            <div class="px-4 py-3 border-b gh-border flex justify-between items-center bg-[#161b22]">
+                <h4 id="modal-title" class="text-xs font-bold font-mono text-[#c9d1d9]">image.png</h4>
+                <button onclick="closePreview()" class="text-lg gh-text-sub hover:text-white font-bold p-1">&times;</button>
+            </div>
+            <div class="p-6 flex justify-center items-center bg-zinc-950/20 max-h-[400px] overflow-y-auto">
+                <img id="modal-img" src="" class="max-w-full max-h-[350px] object-contain rounded border gh-border shadow-md">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 💡 [중요] 본인의 깃허브 아이디와 저장소 이름으로 반드시 수정하세요!
+        const GH_USER = "forst-dev";
+        const GH_REPO = "serverless-image-cdn";
+
+        // 🚀 GitHub REST API를 활용해 images/ 폴더의 파일 목록을 실시간으로 긁어옵니다.
+        const API_URL = `https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/images`;
+
+        fetch(API_URL)
+            .then(res => {
+                if (!res.ok) throw new Error("폴더를 찾을 수 없거나 비어있습니다.");
+                return res.json();
+            })
+            .then(files => {
+                const container = document.getElementById('asset-container');
+                container.innerHTML = '';
+
+                // 이미지 확장자만 필터링
+                const validExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'];
+                const imageFiles = files.filter(file => {
+                    const ext = file.name.split('.').pop().toLowerCase();
+                    return file.type === 'file' && validExtensions.includes(ext);
+                });
+
+                if(imageFiles.length === 0) {
+                    container.innerHTML = `<p class="text-center gh-text-sub py-12 text-xs">images/ 폴더에 업로드된 이미지 파일이 없습니다.</p>`;
+                    return;
+                }
+
+                imageFiles.forEach((file, idx) => {
+                    // GitHub Pages 표준 다운로드 주소 빌드
+                    const cdnUrl = `https://${GH_USER}.github.io/${GH_REPO}/images/${file.name}`;
+                    
+                    const card = document.createElement('div');
+                    card.className = "gh-card border rounded-lg p-4 flex flex-col sm:flex-row gap-4 items-center justify-between hover:border-blue-500/50 transition-colors";
+                    card.innerHTML = `
+                        <div class="flex items-center gap-4 w-full sm:w-[70%] min-w-0">
+                            <div class="w-12 h-12 rounded border gh-border overflow-hidden bg-gray-500/5 shrink-0 flex items-center justify-center">
+                                <img src="${cdnUrl}" class="object-cover w-full h-full" alt="Thumb">
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <p class="text-xs font-bold truncate font-mono">${file.name}</p>
+                                <p class="text-[10px] gh-text-sub truncate font-mono" id="url-${idx}">${cdnUrl}</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 w-full sm:w-auto shrink-0">
+                            <button onclick="copyUrl('url-${idx}')" class="flex-1 sm:w-20 text-[10px] py-1 border gh-border rounded font-semibold hover:bg-gray-500/10 cursor-pointer">주소 복사</button>
+                            <a href="${cdnUrl}" download="${file.name}" class="flex-1 sm:w-20 text-[10px] py-1 bg-zinc-700 hover:bg-zinc-600 text-white rounded font-semibold text-center flex items-center justify-center cursor-pointer">다운로드</a>
+                            <button onclick="openPreview('${cdnUrl}', '${file.name}')" class="flex-1 sm:w-20 text-[10px] py-1 bg-blue-500 text-white rounded font-semibold hover:bg-blue-600 cursor-pointer">미리보기</button>
+                        </div>
+                    `;
+                    container.appendChild(card);
+                });
+            })
+            .catch(err => {
+                document.getElementById('asset-container').innerHTML = `
+                    <div class="text-center py-12 text-xs">
+                        <p class="text-red-400 font-semibold">⚠️ 저장소 연결 대기 중</p>
+                        <p class="gh-text-sub mt-1">저장소에 <code class="bg-gray-500/10 px-1 rounded">images</code> 폴더를 만들고 이미지를 최소 1개 업로드해야 리스트가 나타납니다.</p>
+                    </div>`;
+            });
+
+        // 기능 함수들
+        function copyUrl(id) {
+            navigator.clipboard.writeText(document.getElementById(id).innerText);
+            alert("🔗 주소가 복사되었습니다!");
+        }
+        function openPreview(url, name) {
+            document.getElementById('modal-title').innerText = name;
+            document.getElementById('modal-img').src = url;
+            document.getElementById('preview-modal').className = "fixed inset-0 bg-black/70 backdrop-blur-xs z-50 flex items-center justify-center p-4";
+        }
+        function closePreview() {
+            document.getElementById('preview-modal').className = "fixed inset-0 bg-black/70 backdrop-blur-xs z-50 hidden items-center justify-center p-4";
+        }
+    </script>
+</body>
+</html>
